@@ -1,5 +1,4 @@
-import {cross, groups, InternMap} from "d3";
-import {create} from "d3";
+import {create, cross, groups, groupSort, InternMap} from "d3";
 import {Mark, values, first, second} from "./mark.js";
 
 export function facets(data, {x, y, ...options}, marks) {
@@ -9,7 +8,7 @@ export function facets(data, {x, y, ...options}, marks) {
 }
 
 class Facet extends Mark {
-  constructor(data, {x, y, columns, ...options} = {}, marks = []) {
+  constructor(data, {x, y, columns, sort = "ascending", reverse, ...options} = {}, marks = []) {
     super(
       data,
       [
@@ -19,8 +18,9 @@ class Facet extends Mark {
       options
     );
     this.marks = marks.flat(Infinity);
-    this.xy = x === y;
     this.columns = columns;
+    this.sort = sort;
+    this.reverse = reverse;
     // The following fields are set by initialize:
     this.marksChannels = undefined; // array of mark channels
     this.marksIndex = undefined; // array of mark indexes (for non-faceted marks)
@@ -31,19 +31,6 @@ class Facet extends Mark {
     const facets = index === undefined ? [] : facetGroups(index, channels);
     const facetsKeys = Array.from(facets, first);
     const facetsIndex = Array.from(facets, second);
-    if (this.xy) {
-      const columns = this.columns || Math.ceil(Math.sqrt(facetsKeys.length));
-      const x = channels.find(([d]) => d === "fx")[1].value;
-      const y = channels.find(([d]) => d === "fy")[1].value;
-      for (let j = 0; j < facetsKeys.length; j++) {
-        const [a, b] = [j % columns, Math.floor(j / columns)];
-        facetsKeys[j] = [a, b];
-        for (const i of facetsIndex[j]) {
-          x[i] = a;
-          y[i] = b;
-        }
-      }
-    }
     const subchannels = [];
     const marksChannels = this.marksChannels = [];
     const marksIndex = this.marksIndex = new Array(this.marks.length);
@@ -77,6 +64,25 @@ class Facet extends Mark {
         subchannels.push([, channel]);
       }
       marksChannels.push(channels);
+    }
+    
+    // facet wrap
+    const {columns, sort, reverse} = this;
+    if (columns) {
+      const X = channels.find(d => d[0] === "fx")[1];
+      const V = sort === "ascending" ? groupSort(X.value, v => v[0], d => d)
+        : sort === "count" ? groupSort(X.value, ({length}) => length, d => d)
+        : Array.from(new Set(X.value)); // "input"
+      if (reverse) V.reverse();
+      const m = new InternMap(V.map((v,i) => [v, i]));
+      const cols = columns === true ? m.size < 4 ? m.size : Math.min(6, Math.floor(Math.sqrt(m.size))) : columns;
+      channels.push(["fy", {scale: "fy", value: X.value.map(v => Math.floor(m.get(v) / cols)) }]);
+      X.value = X.value.map(v => m.get(v) % cols);
+      const B = new facetMap({length: 2});
+      for (const [v, i] of m) {
+        B.set([i % cols, Math.floor(i / cols)], marksIndexByFacet.get(v));
+      }
+      this.marksIndexByFacet = B;
     }
     return {index, channels: [...channels, ...subchannels]};
   }

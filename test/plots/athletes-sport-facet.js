@@ -20,8 +20,9 @@ export default async function() {
       data: athletes,
       marginLeft: 100,
       x: "sport",
-      y: "sport",
-      columns: 4
+      columns: 4,
+      sort: "count",
+      reverse: true
     },
     fx: { axis: null },
     fy: { axis: null },
